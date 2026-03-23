@@ -1,0 +1,10 @@
+model,domain,total,accuracy,exact_match,token_f1,semantic_similarity
+openai/gpt-oss-20b,Complexity Theory Concepts,390,0.0,0.0,0.0,0.0
+openai/gpt-oss-20b,Computability Theory,409,0.0,0.0,0.0,0.0
+openai/gpt-oss-20b,Computer Science,2419,0.0,0.0,0.0,0.0
+openai/gpt-oss-20b,Context-Free Languages,208,0.0,0.0,0.0,0.0
+openai/gpt-oss-20b,Countability Concepts,268,0.0,0.0,0.0,0.0
+openai/gpt-oss-20b,Fundamental Concepts,490,0.0,0.0,0.0,0.0
+openai/gpt-oss-20b,Regular Languages,451,0.0,0.0,0.0,0.0
+openai/gpt-oss-20b,Theoretical Concepts,1790,0.0,0.0,0.0,0.0
+openai/gpt-oss-20b,computer science,415,0.0,0.0,0.0,0.0

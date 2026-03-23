@@ -1,0 +1,4 @@
+model,dataset,total,accuracy,exact_match,token_f1,semantic_similarity
+openai/gpt-oss-20b,cs_bench,2419,0.0,0.0,0.0,0.0
+openai/gpt-oss-20b,mmlu_pro_cs,415,0.0,0.0,0.0,0.0
+openai/gpt-oss-20b,turingq,4006,0.0,0.0,0.0,0.0

@@ -1,0 +1,3 @@
+model,format,total,accuracy,exact_match,token_f1,semantic_similarity
+openai/gpt-oss-20b,Multiple-choice,1896,0.0,0.0,0.0,0.0
+openai/gpt-oss-20b,Open-ended,4944,0.0,0.0,0.0,0.0

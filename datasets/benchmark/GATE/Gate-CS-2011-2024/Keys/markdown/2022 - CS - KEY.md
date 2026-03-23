@@ -1,0 +1,81 @@
+![](_page_0_Picture_2.jpeg)
+
+![](_page_0_Picture_3.jpeg)
+
+| Q. No. | Session | Question<br>Type | Subject<br>Name | Key/Range    | Mark |
+|--------|---------|------------------|-----------------|--------------|------|
+| 1      | 1       | MCQ              | GA              | D            | 1    |
+| 2      | 1       | MCQ              | GA              | С            | 1    |
+| 3      | 1       | MCQ              | GA              | D            | 1    |
+| 4      | 1       | MCQ              | GA              | A            | 1    |
+| 5      | 1       | MCQ              | GA              | В            | 1    |
+| 6      | 1       | MCQ              | GA              | В            | 2    |
+| 7      | 1       | MCQ              | GA              | D            | 2    |
+| 8      | 1       | MCQ              | GA              | D            | 2    |
+| 9      | 1       |                  | GA              | В            | 2    |
+| -      | 1       | MCQ              |                 |              | 2    |
+| 10     | 1       | MCQ              | GA              | D            | 1    |
+| 11     |         | MCQ              | CS              | A            |      |
+| 12     | 1       | MCQ              | CS              | D            | 1    |
+| 13     | 1       | MCQ              | CS              | D            | 1    |
+| 14     | 1       | MCQ              | CS              | Α            | 1    |
+| 15     | 1       | MCQ              | CS              | A            | 1    |
+| 16     | 1       | MCQ              | CS              | В            | 1    |
+| 17     | 1       | MCQ              | CS              | Α            | 1    |
+| 18     | 1       | MCQ              | CS              | В            | 1    |
+| 19     | 1       | MCQ              | CS              | С            | 1    |
+| 20     | 1       | MCQ              | CS              | С            | 1    |
+| 21     | 1       | MCQ              | CS              | D            | 1    |
+| 22     | 1       | MCQ              | CS              | С            | 1    |
+| 23     | 1       | MSQ              | CS              | B,C,D        | 1    |
+| 24     | 1       | MSQ              | CS              | A,B,D        | 1    |
+| 25     | 1       | MSQ              | CS              | A,B          | 1    |
+| 26     | 1       | MSQ              | CS              | A,D          | 1    |
+| 27     | 1       | MSQ              | CS              | A,B,C        | 1    |
+| 28     | 1       | NAT              | CS              | 509 to 509   | 1    |
+| 29     | 1       | NAT              | CS              | 5 to 5       | 1    |
+| 30     | 1       | NAT              | CS              | 36 to 36     | 1    |
+| 31     | 1       | NAT              | CS              | 8 to 8       | 1    |
+| 32     | 1       | NAT              | CS              | 7 to 7       | 1    |
+| 33     | 1       | NAT              | CS              | 0.85 to 0.85 | 1    |
+| 34     | 1       | NAT              | CS              | -0.5 to -0.5 | 1    |
+| 35     | 1       | NAT              | CS              | 4 to 4       | 1    |
+| 36     | 1       | MCQ              | CS              | Α            | 2    |
+| 37     | 1       | MCQ              | CS              | D            | 2    |
+| 38     | 1       | MCQ              | CS              | С            | 2    |
+| 39     | 1       | MCQ              | CS              | Α            | 2    |
+| 40     | 1       | MCQ              | CS              | С            | 2    |
+| 41     | 1       | MCQ              | CS              | В            | 2    |
+| 42     | 1       | MCQ              | CS              | D            | 2    |
+| 43     | 1       | MCQ              | CS              | Α            | 2    |
+| 44     | 1       | MCQ              | CS              |              | 2    |
+| 44     | 1       | IVICU            | LS              | A            |      |
+
+![](_page_1_Picture_1.jpeg)
+
+![](_page_1_Picture_2.jpeg)
+
+![](_page_1_Picture_3.jpeg)
+
+| 45 | 1 | MCQ | CS | D            | 2 |
+|----|---|-----|----|--------------|---|
+| 46 | 1 | MSQ | CS | A,B,C        | 2 |
+| 47 | 1 | MSQ | CS | A,B,C        | 2 |
+| 48 | 1 | MSQ | CS | B,C,D        | 2 |
+| 49 | 1 | MSQ | CS | A,B,C        | 2 |
+| 50 | 1 | MSQ | CS | A,B,C        | 2 |
+| 51 | 1 | MSQ | CS | A,B,C        | 2 |
+| 52 | 1 | MSQ | CS | Α            | 2 |
+| 53 | 1 | MSQ | CS | A,C,D        | 2 |
+| 54 | 1 | MSQ | CS | A,B,D        | 2 |
+| 55 | 1 | MSQ | CS | B,D          | 2 |
+| 56 | 1 | NAT | CS | 2 to 2       | 2 |
+| 57 | 1 | NAT | CS | 0.5 to 0.5   | 2 |
+| 58 | 1 | NAT | CS | 24 to 24     | 2 |
+| 59 | 1 | NAT | CS | 7.07 to 7.09 | 2 |
+| 60 | 1 | NAT | CS | 33 to 33     | 2 |
+| 61 | 1 | NAT | CS | 1.42 to 1.45 | 2 |
+| 62 | 1 | NAT | CS | 0 to 0       | 2 |
+| 63 | 1 | NAT | CS | 153 to 153   | 2 |
+| 64 | 1 | NAT | CS | 0.6 to 0.6   | 2 |
+| 65 | 1 | NAT | CS | 80 to 80     | 2 |
