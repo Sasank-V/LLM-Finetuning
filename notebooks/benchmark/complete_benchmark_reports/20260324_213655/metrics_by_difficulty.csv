@@ -1,0 +1,2 @@
+model,difficulty,total,accuracy,exact_match,token_f1,semantic_similarity
+Qwen/Qwen3.5-2B,unknown,6840,0.260233918128655,0.02850877192982456,0.08035630937566855,0.3665432912450227

@@ -1,0 +1,156 @@
+{
+  "overall": [
+    {
+      "model": "Qwen/Qwen3.5-2B",
+      "total": 6840,
+      "accuracy": 0.260233918128655,
+      "exact_match": 0.02850877192982456,
+      "token_f1": 0.08035630937566855,
+      "semantic_similarity": 0.3665432912450227
+    }
+  ],
+  "by_dataset": [
+    {
+      "model": "Qwen/Qwen3.5-2B",
+      "dataset": "cs_bench",
+      "total": 2419,
+      "accuracy": 0.4865646961554361,
+      "exact_match": 0.07771806531624638,
+      "token_f1": 0.08561579736750673,
+      "semantic_similarity": 0.26865602125153054
+    },
+    {
+      "model": "Qwen/Qwen3.5-2B",
+      "dataset": "mmlu_pro_cs",
+      "total": 415,
+      "accuracy": 0.29156626506024097,
+      "exact_match": 0.0,
+      "token_f1": 0.0,
+      "semantic_similarity": 0.0
+    },
+    {
+      "model": "Qwen/Qwen3.5-2B",
+      "dataset": "turingq",
+      "total": 4006,
+      "accuracy": 0.12031952071892162,
+      "exact_match": 0.001747378931602596,
+      "token_f1": 0.085504878257008,
+      "semantic_similarity": 0.4636238633820526
+    }
+  ],
+  "by_format": [
+    {
+      "model": "Qwen/Qwen3.5-2B",
+      "format": "Multiple-choice",
+      "total": 1896,
+      "accuracy": 0.5010548523206751,
+      "exact_match": 0.0,
+      "token_f1": 0.0,
+      "semantic_similarity": 0.0
+    },
+    {
+      "model": "Qwen/Qwen3.5-2B",
+      "format": "Open-ended",
+      "total": 4944,
+      "accuracy": 0.16788025889967637,
+      "exact_match": 0.03944174757281554,
+      "token_f1": 0.1111725639420657,
+      "semantic_similarity": 0.5071108641011236
+    }
+  ],
+  "by_domain": [
+    {
+      "model": "Qwen/Qwen3.5-2B",
+      "domain": "Complexity Theory Concepts",
+      "total": 390,
+      "accuracy": 0.03333333333333333,
+      "exact_match": 0.01282051282051282,
+      "token_f1": 0.031022592537627482,
+      "semantic_similarity": 0.4031974413795567
+    },
+    {
+      "model": "Qwen/Qwen3.5-2B",
+      "domain": "Computability Theory",
+      "total": 409,
+      "accuracy": 0.012224938875305624,
+      "exact_match": 0.0,
+      "token_f1": 0.016753321239309296,
+      "semantic_similarity": 0.3627940255008383
+    },
+    {
+      "model": "Qwen/Qwen3.5-2B",
+      "domain": "Computer Science",
+      "total": 2419,
+      "accuracy": 0.4865646961554361,
+      "exact_match": 0.07771806531624638,
+      "token_f1": 0.08561579736750673,
+      "semantic_similarity": 0.26865602125153054
+    },
+    {
+      "model": "Qwen/Qwen3.5-2B",
+      "domain": "Context-Free Languages",
+      "total": 208,
+      "accuracy": 0.019230769230769232,
+      "exact_match": 0.0,
+      "token_f1": 0.0590337628845334,
+      "semantic_similarity": 0.4182142170539713
+    },
+    {
+      "model": "Qwen/Qwen3.5-2B",
+      "domain": "Countability Concepts",
+      "total": 268,
+      "accuracy": 0.014925373134328358,
+      "exact_match": 0.0,
+      "token_f1": 0.018446301486320767,
+      "semantic_similarity": 0.36284319761343214
+    },
+    {
+      "model": "Qwen/Qwen3.5-2B",
+      "domain": "Fundamental Concepts",
+      "total": 490,
+      "accuracy": 0.12857142857142856,
+      "exact_match": 0.0020408163265306124,
+      "token_f1": 0.07692863372539124,
+      "semantic_similarity": 0.4628682330413507
+    },
+    {
+      "model": "Qwen/Qwen3.5-2B",
+      "domain": "Regular Languages",
+      "total": 451,
+      "accuracy": 0.019955654101995565,
+      "exact_match": 0.0,
+      "token_f1": 0.026520023092209275,
+      "semantic_similarity": 0.3839130842221828
+    },
+    {
+      "model": "Qwen/Qwen3.5-2B",
+      "domain": "Theoretical Concepts",
+      "total": 1790,
+      "accuracy": 0.21452513966480447,
+      "exact_match": 0.0005586592178770949,
+      "token_f1": 0.14340973765512674,
+      "semantic_similarity": 0.5404841725466707
+    },
+    {
+      "model": "Qwen/Qwen3.5-2B",
+      "domain": "computer science",
+      "total": 415,
+      "accuracy": 0.29156626506024097,
+      "exact_match": 0.0,
+      "token_f1": 0.0,
+      "semantic_similarity": 0.0
+    }
+  ],
+  "by_difficulty": [
+    {
+      "model": "Qwen/Qwen3.5-2B",
+      "difficulty": "unknown",
+      "total": 6840,
+      "accuracy": 0.260233918128655,
+      "exact_match": 0.02850877192982456,
+      "token_f1": 0.08035630937566855,
+      "semantic_similarity": 0.3665432912450227
+    }
+  ],
+  "by_type": []
+}
