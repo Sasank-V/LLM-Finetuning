@@ -1,0 +1,7 @@
+updates
+.env*
+.ipynb_checkpoints
+.virtual_documents
+unsloth_compiled_cache
+*.log
+notebooks/preprocessing/vectordb/
