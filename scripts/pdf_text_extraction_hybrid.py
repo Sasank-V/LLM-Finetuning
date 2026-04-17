@@ -2,26 +2,29 @@
 # coding: utf-8
 
 # # Hybrid PDF Text Extraction (Multi-Parser + Datalab Marker Fallback)
-# 
-# 
-# 
+#
+#
+#
 # This notebook extracts text page-by-page from PDFs using a robust hybrid strategy:
-# 
+#
 # 1. Multiple primary parsers per page: PyMuPDF, pdfplumber, and pypdf.
-# 
+#
 # 2. Rich garble detection metrics (symbol ratio, dictionary OOV ratio, language confidence, encoding artifacts, token structure).
-# 
+#
 # 3. Best-parser selection by quality score and threshold gating.
-# 
+#
 # 4. Automatic fallback to Datalab Marker markdown when quality is poor.
-# 
+#
 # 5. Per-page CSV output with diagnostics and source used.
-# 
+#
 
 # In[1]:
 
 
-get_ipython().run_line_magic('pip', 'install pymupdf pdfplumber pypdf pandas tqdm requests python-dotenv langdetect chardet wordfreq openai')
+get_ipython().run_line_magic(
+    "pip",
+    "install pymupdf pdfplumber pypdf pandas tqdm requests python-dotenv langdetect chardet wordfreq openai",
+)
 
 
 # In[2]:
@@ -73,11 +76,17 @@ BOOKS_DIR = WORKSPACE_ROOT / "Books"
 OUTPUT_DIR = WORKSPACE_ROOT
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-DATALAB_MARKER_URL = os.getenv("DATALAB_MARKER_URL", "http://localhost:8001/marker/upload").strip()
+DATALAB_MARKER_URL = os.getenv(
+    "DATALAB_MARKER_URL", "http://localhost:8001/marker/upload"
+).strip()
 MARKER_TIMEOUT_SEC = int(os.getenv("MARKER_TIMEOUT_SEC", "120"))
 
-VISION_LLM_MODEL = os.getenv("VISION_LLM_MODEL_NAME", "Qwen/Qwen3-VL-8B-Instruct").strip()
-VISION_LLM_BASE_URL = os.getenv("VISION_LLM_API_URL", "http://localhost:8002/v1").strip()
+VISION_LLM_MODEL = os.getenv(
+    "VISION_LLM_MODEL_NAME", "Qwen/Qwen3-VL-8B-Instruct"
+).strip()
+VISION_LLM_BASE_URL = os.getenv(
+    "VISION_LLM_API_URL", "http://localhost:8002/v1"
+).strip()
 VISION_LLM_API_KEY = os.getenv("VISION_LLM_API_KEY", "").strip()
 
 
@@ -151,7 +160,12 @@ def deep_clean_text(raw_text: str) -> str:
 
     merged: List[str] = []
     for line in cleaned:
-        if merged and len(line) < 80 and line[0].islower() and not merged[-1].endswith((".", ":", ";", "?", "!")):
+        if (
+            merged
+            and len(line) < 80
+            and line[0].islower()
+            and not merged[-1].endswith((".", ":", ";", "?", "!"))
+        ):
             merged[-1] = f"{merged[-1]} {line}"
         else:
             merged.append(line)
@@ -181,6 +195,7 @@ def extract_page_text_pymupdf(doc: fitz.Document, page_idx: int) -> str:
     filtered.sort(key=lambda x: (round(x[0], 1), round(x[1], 1)))
     joined = "\n".join(t for _, _, t in filtered)
     return deep_clean_text(joined)
+
 
 def single_page_pdf_bytes(doc: fitz.Document, page_idx: int) -> bytes:
     temp = fitz.open()
@@ -238,19 +253,28 @@ def _extract_marker_content(payload: Any) -> str:
 
     if isinstance(payload, dict):
         # Prefer explicit content keys first.
-        for key in ["markdown", "text", "content", "page_markdown", "page_text", "full_text", "result", "output"]:
+        for key in [
+            "markdown",
+            "text",
+            "content",
+            "page_markdown",
+            "page_text",
+            "full_text",
+            "result",
+            "output",
+        ]:
             if key in payload:
                 got = _extract_marker_content(payload.get(key))
                 if got:
                     return got
-                    
+
         # If paginated structure exists, collect per-page bodies.
         for key in ["pages", "page_outputs", "items", "data"]:
             if key in payload and isinstance(payload.get(key), list):
                 got = _extract_marker_content(payload.get(key))
                 if got:
                     return got
-        
+
         # Fallback over values but skip metadata keys.
         parts: List[str] = []
         for k, v in payload.items():
@@ -263,7 +287,10 @@ def _extract_marker_content(payload: Any) -> str:
 
     return ""
 
-def extract_page_markdown_marker(file_bytes: bytes, filename: str, marker_url: str, timeout_sec: int = 120) -> str:
+
+def extract_page_markdown_marker(
+    file_bytes: bytes, filename: str, marker_url: str, timeout_sec: int = 120
+) -> str:
     if not marker_url:
         return ""
 
@@ -283,7 +310,9 @@ def extract_page_markdown_marker(file_bytes: bytes, filename: str, marker_url: s
     last_error = None
     for endpoint in candidates:
         try:
-            resp = requests.post(endpoint, files=files, data=data, headers=headers, timeout=timeout_sec)
+            resp = requests.post(
+                endpoint, files=files, data=data, headers=headers, timeout=timeout_sec
+            )
             resp.raise_for_status()
             try:
                 payload = resp.json()
@@ -292,7 +321,6 @@ def extract_page_markdown_marker(file_bytes: bytes, filename: str, marker_url: s
                     return deep_clean_text(extracted)
             except Exception:
                 pass
-
 
             raw = (resp.text or "").strip()
             if not raw:
@@ -306,7 +334,7 @@ def extract_page_markdown_marker(file_bytes: bytes, filename: str, marker_url: s
                 # If server returns plain markdown/text directly.
                 if raw.lower() not in {"markdown", "json", "html"}:
                     return deep_clean_text(raw)
-                    
+
         except Exception as exc:
             last_error = exc
             continue
@@ -368,7 +396,9 @@ def dictionary_unknown_ratio(text: str, language_hint: str = "en") -> float:
     if not tokens:
         return 1.0
 
-    language = language_hint if language_hint in {"en", "de", "fr", "es", "it", "pt"} else "en"
+    language = (
+        language_hint if language_hint in {"en", "de", "fr", "es", "it", "pt"} else "en"
+    )
     unknown = 0
     for tok in tokens:
         if zipf_frequency(tok, language) < 2.0:
@@ -391,9 +421,16 @@ def suspicious_char_metrics(text: str) -> Dict[str, float]:
     mojibake_hits = len(MOJIBAKE_RE.findall(t))
     replacement_char_count = t.count("�")
     explicit_suspicious_count = sum(ch in SUSPICIOUS_CHARS for ch in t)
-    non_printable_count = sum((ord(ch) < 32 and ch not in {"\n", "\t", "\r"}) for ch in t)
+    non_printable_count = sum(
+        (ord(ch) < 32 and ch not in {"\n", "\t", "\r"}) for ch in t
+    )
 
-    suspicious_char_total = mojibake_hits + replacement_char_count + explicit_suspicious_count + non_printable_count
+    suspicious_char_total = (
+        mojibake_hits
+        + replacement_char_count
+        + explicit_suspicious_count
+        + non_printable_count
+    )
     suspicious_char_ratio = suspicious_char_total / max(1, len(t))
 
     return {
@@ -409,7 +446,11 @@ def suspicious_char_metrics(text: str) -> Dict[str, float]:
 def encoding_artifact_metrics(text: str) -> Dict[str, float]:
     t = text or ""
     if not t:
-        return {"encoding_confidence": 0.0, "encoding_artifact_ratio": 1.0, "replacement_char_ratio": 0.0}
+        return {
+            "encoding_confidence": 0.0,
+            "encoding_artifact_ratio": 1.0,
+            "replacement_char_ratio": 0.0,
+        }
 
     mojibake_hits = len(MOJIBAKE_RE.findall(t))
     replacement_chars = t.count("�")
@@ -457,7 +498,9 @@ def text_quality_metrics(text: str) -> Dict[str, float]:
     words = [tok for tok in tokens if re.search(r"[A-Za-z]", tok)]
     avg_word_len = sum(len(w) for w in words) / max(1, len(words))
     short_word_ratio = sum(len(w) < 3 for w in words) / max(1, len(words))
-    alnum_mixed = sum(bool(re.search(r"[A-Za-z]", tok) and re.search(r"\d", tok)) for tok in tokens)
+    alnum_mixed = sum(
+        bool(re.search(r"[A-Za-z]", tok) and re.search(r"\d", tok)) for tok in tokens
+    )
     alnum_mixed_ratio = alnum_mixed / max(1, len(tokens))
 
     language, lang_conf = detect_language_confidence(t)
@@ -536,7 +579,9 @@ def should_fallback_to_marker(metrics: Dict[str, float]) -> Tuple[bool, str]:
     return False, "best_parser_ok"
 
 
-def _best_parser_choice(parser_outputs: Dict[str, str]) -> Tuple[str, str, Dict[str, float], Dict[str, Dict[str, float]]]:
+def _best_parser_choice(
+    parser_outputs: Dict[str, str],
+) -> Tuple[str, str, Dict[str, float], Dict[str, Dict[str, float]]]:
     parser_metrics: Dict[str, Dict[str, float]] = {}
     best_name = ""
     best_text = ""
@@ -589,7 +634,7 @@ def vision_page_to_latex(
     page_image_b64: str,
     extracted_text: str,
     timeout_sec: int = 120,
-    ) -> str:
+) -> str:
     if not client or not model:
         return ""
 
@@ -608,7 +653,12 @@ def vision_page_to_latex(
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": prompt_text + "\n\nOCR text:\n" + (extracted_text or "")},
+                    {
+                        "type": "text",
+                        "text": prompt_text
+                        + "\n\nOCR text:\n"
+                        + (extracted_text or ""),
+                    },
                     {
                         "type": "image_url",
                         "image_url": {"url": f"data:image/png;base64,{page_image_b64}"},
@@ -664,21 +714,28 @@ def markdown_quality_metrics(markdown_text: str) -> Dict[str, float]:
     table_count = len(MD_TABLE_RE.findall(md))
     code_block_count = len(MD_CODE_BLOCK_RE.findall(md))
 
-    markdown_symbol_count = sum(md.count(ch) for ch in ["#", "*", "_", "`", "|", "[", "]", "(", ")"])
+    markdown_symbol_count = sum(
+        md.count(ch) for ch in ["#", "*", "_", "`", "|", "[", "]", "(", ")"]
+    )
     markdown_symbol_ratio = markdown_symbol_count / char_count
 
     words = [w for w in re.findall(r"[A-Za-z]{2,}", plain)]
     unique_ratio = (len(set(words)) / max(1, len(words))) if words else 0.0
     lexical_score = min(1.0, unique_ratio / 0.55)
 
-    structural_bonus = min(0.08, (heading_count * 0.01) + (list_count * 0.005) + (table_count * 0.01))
+    structural_bonus = min(
+        0.08, (heading_count * 0.01) + (list_count * 0.005) + (table_count * 0.01)
+    )
     formatting_penalty = min(0.10, markdown_symbol_ratio * 0.7)
 
     md_quality_score = max(
         0.0,
         min(
             1.0,
-            (0.86 * base["quality_score"]) + (0.08 * lexical_score) + structural_bonus - formatting_penalty,
+            (0.86 * base["quality_score"])
+            + (0.08 * lexical_score)
+            + structural_bonus
+            - formatting_penalty,
         ),
     )
 
@@ -707,7 +764,9 @@ def markdown_has_figure_placeholder(text: str) -> bool:
     return bool(FIGURE_PLACEHOLDER_RE.search(t) or MD_IMAGE_RE.search(t))
 
 
-def should_use_vision_for_markdown(metrics: Dict[str, float], has_figure_placeholder: bool) -> Tuple[bool, str]:
+def should_use_vision_for_markdown(
+    metrics: Dict[str, float], has_figure_placeholder: bool
+) -> Tuple[bool, str]:
     md_metrics = markdown_quality_metrics(_LAST_MARKDOWN_TEXT_FOR_EVAL)
 
     if has_figure_placeholder:
@@ -722,7 +781,10 @@ def should_use_vision_for_markdown(metrics: Dict[str, float], has_figure_placeho
     if md_metrics["plain_dictionary_unknown_ratio"] > 0.30:
         return True, "markdown_high_dictionary_unknown_ratio"
 
-    if md_metrics["plain_non_alnum_ratio"] > 0.22 and md_metrics["code_block_count"] == 0:
+    if (
+        md_metrics["plain_non_alnum_ratio"] > 0.22
+        and md_metrics["code_block_count"] == 0
+    ):
         return True, "markdown_high_non_alnum_ratio"
 
     return False, "markdown_ok"
@@ -731,7 +793,9 @@ def should_use_vision_for_markdown(metrics: Dict[str, float], has_figure_placeho
 # In[8]:
 
 
-def extract_book_pages_hybrid(pdf_path: Path, config: ExtractionConfig, start_page: int = 0):
+def extract_book_pages_hybrid(
+    pdf_path: Path, config: ExtractionConfig, start_page: int = 0
+):
     with fitz.open(pdf_path) as fitz_doc, pdfplumber.open(str(pdf_path)) as plumber_doc:
         best_text = None
         marker_text = None
@@ -740,7 +804,9 @@ def extract_book_pages_hybrid(pdf_path: Path, config: ExtractionConfig, start_pa
         pypdf_reader = PdfReader(str(pdf_path))
         total_pages = len(fitz_doc)
         start_page = max(0, min(start_page, total_pages))
-        for page_idx in tqdm(range(start_page, total_pages), desc=f"Extract::{pdf_path.name}"):
+        for page_idx in tqdm(
+            range(start_page, total_pages), desc=f"Extract::{pdf_path.name}"
+        ):
             page_no = page_idx + 1
             parser_outputs = {
                 "pymupdf": extract_page_text_pymupdf(fitz_doc, page_idx),
@@ -748,7 +814,9 @@ def extract_book_pages_hybrid(pdf_path: Path, config: ExtractionConfig, start_pa
                 "pypdf": extract_page_text_pypdf(pypdf_reader, page_idx),
             }
 
-            best_parser, best_text, best_metrics, all_parser_metrics = _best_parser_choice(parser_outputs)
+            best_parser, best_text, best_metrics, all_parser_metrics = (
+                _best_parser_choice(parser_outputs)
+            )
             fallback_needed, fallback_reason = should_fallback_to_marker(best_metrics)
 
             marker_text = ""
@@ -756,7 +824,9 @@ def extract_book_pages_hybrid(pdf_path: Path, config: ExtractionConfig, start_pa
             marker_metrics = text_quality_metrics("")
             markdown_eval_text = best_text
             markdown_eval_metrics = best_metrics
-            markdown_has_placeholder = markdown_has_figure_placeholder(markdown_eval_text)
+            markdown_has_placeholder = markdown_has_figure_placeholder(
+                markdown_eval_text
+            )
 
             vision_latex_text = ""
             vision_error = ""
@@ -787,7 +857,12 @@ def extract_book_pages_hybrid(pdf_path: Path, config: ExtractionConfig, start_pa
                 markdown_has_placeholder,
             )
 
-            if config.use_vision_latex_fallback and need_vision and VISION_CLIENT and VISION_LLM_MODEL:
+            if (
+                config.use_vision_latex_fallback
+                and need_vision
+                and VISION_CLIENT
+                and VISION_LLM_MODEL
+            ):
                 try:
                     page_png_b64 = page_to_base64_png(fitz_doc, page_idx)
                     vision_latex_text = vision_page_to_latex(
@@ -835,14 +910,28 @@ def extract_book_pages_hybrid(pdf_path: Path, config: ExtractionConfig, start_pa
                 "best_length": int(best_metrics["length"]),
                 "marker_length": int(marker_metrics["length"]),
                 "best_non_alnum_ratio": round(best_metrics["non_alnum_ratio"], 4),
-                "best_dictionary_unknown_ratio": round(best_metrics["dictionary_unknown_ratio"], 4),
-                "best_language_confidence": round(best_metrics["language_confidence"], 4),
-                "best_encoding_artifact_ratio": round(best_metrics["encoding_artifact_ratio"], 4),
+                "best_dictionary_unknown_ratio": round(
+                    best_metrics["dictionary_unknown_ratio"], 4
+                ),
+                "best_language_confidence": round(
+                    best_metrics["language_confidence"], 4
+                ),
+                "best_encoding_artifact_ratio": round(
+                    best_metrics["encoding_artifact_ratio"], 4
+                ),
                 "best_avg_word_len": round(best_metrics["avg_word_len"], 4),
-                "best_alnum_mixed_token_ratio": round(best_metrics["alnum_mixed_token_ratio"], 4),
-                "best_suspicious_char_total": int(best_metrics["suspicious_char_total"]),
-                "best_suspicious_char_ratio": round(best_metrics["suspicious_char_ratio"], 6),
-                "parser_metrics_json": json.dumps(all_parser_metrics, ensure_ascii=False),
+                "best_alnum_mixed_token_ratio": round(
+                    best_metrics["alnum_mixed_token_ratio"], 4
+                ),
+                "best_suspicious_char_total": int(
+                    best_metrics["suspicious_char_total"]
+                ),
+                "best_suspicious_char_ratio": round(
+                    best_metrics["suspicious_char_ratio"], 6
+                ),
+                "parser_metrics_json": json.dumps(
+                    all_parser_metrics, ensure_ascii=False
+                ),
                 "marker_error": marker_error,
                 "vision_error": vision_error,
                 "text": final_text,
@@ -872,7 +961,9 @@ FIGURE_MD_RE = re.compile(r"!\[[^\]]*\]\([^\)]+\)")
 FIGURE_HTML_RE = re.compile(r"<img\b[^>]*>", flags=re.IGNORECASE)
 
 
-def _page_image_base64_list(doc: fitz.Document, page_idx: int, max_images: int = 6) -> List[str]:
+def _page_image_base64_list(
+    doc: fitz.Document, page_idx: int, max_images: int = 6
+) -> List[str]:
     page = doc[page_idx]
     images = page.get_images(full=True) or []
     payloads: List[str] = []
@@ -897,7 +988,7 @@ def vision_describe_or_latex_image(
     image_b64: str,
     page_text: str,
     timeout_sec: int = 120,
-    ) -> str:
+) -> str:
     if not client or not model:
         return ""
 
@@ -916,7 +1007,10 @@ def vision_describe_or_latex_image(
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": prompt + "\n\nPage text context:\n" + (page_text or "")},
+                    {
+                        "type": "text",
+                        "text": prompt + "\n\nPage text context:\n" + (page_text or ""),
+                    },
                     {
                         "type": "image_url",
                         "image_url": {"url": f"data:image/png;base64,{image_b64}"},
@@ -936,6 +1030,7 @@ def replace_figure_placeholders(markdown_text: str, replacements: List[str]) -> 
         return text
 
     idx = 0
+
     def _next_replacement(prefix: str = "") -> str:
         nonlocal idx
         if idx >= len(replacements):
@@ -955,10 +1050,17 @@ def replace_figure_placeholders(markdown_text: str, replacements: List[str]) -> 
     return text.strip()
 
 
-def extract_book_pages_hybrid_with_figure_vision(pdf_path: Path, config: ExtractionConfig, start_page: int = 0):
+def extract_book_pages_hybrid_with_figure_vision(
+    pdf_path: Path, config: ExtractionConfig, start_page: int = 0
+):
     with fitz.open(pdf_path) as fitz_doc:
-        for page_idx, row in enumerate(extract_book_pages_hybrid(pdf_path, config, start_page=start_page), start=start_page):
-            if not (config.use_vision_latex_fallback and VISION_CLIENT and VISION_LLM_MODEL):
+        for page_idx, row in enumerate(
+            extract_book_pages_hybrid(pdf_path, config, start_page=start_page),
+            start=start_page,
+        ):
+            if not (
+                config.use_vision_latex_fallback and VISION_CLIENT and VISION_LLM_MODEL
+            ):
                 yield row
                 continue
 
@@ -987,7 +1089,9 @@ def extract_book_pages_hybrid_with_figure_vision(pdf_path: Path, config: Extract
 
             if not figure_outputs:
                 if figure_errors:
-                    row["vision_error"] = (row.get("vision_error", "") + " | " + " ; ".join(figure_errors)).strip(" |")
+                    row["vision_error"] = (
+                        row.get("vision_error", "") + " | " + " ; ".join(figure_errors)
+                    ).strip(" |")
                 del image_payloads
                 del figure_outputs
                 del figure_errors
@@ -995,15 +1099,21 @@ def extract_book_pages_hybrid_with_figure_vision(pdf_path: Path, config: Extract
                 yield row
                 continue
 
-            row["text"] = replace_figure_placeholders(row.get("text", ""), figure_outputs)
-            row["decision_reason"] = (row.get("decision_reason", "") + "|figure_vision_replaced").strip("|")
+            row["text"] = replace_figure_placeholders(
+                row.get("text", ""), figure_outputs
+            )
+            row["decision_reason"] = (
+                row.get("decision_reason", "") + "|figure_vision_replaced"
+            ).strip("|")
 
             # Preserve main source when it is already vision-driven; otherwise mark enrichment.
             if row.get("source_used") not in {"vision_latex", "vision_figure_enriched"}:
                 row["source_used"] = "vision_figure_enriched"
 
             if figure_errors:
-                row["vision_error"] = (row.get("vision_error", "") + " | " + " ; ".join(figure_errors)).strip(" |")
+                row["vision_error"] = (
+                    row.get("vision_error", "") + " | " + " ; ".join(figure_errors)
+                ).strip(" |")
 
             del image_payloads
             del figure_outputs
@@ -1084,7 +1194,9 @@ for pdf in pdf_files:
         print(f"\nResuming {pdf.name} from page {start_page + 1} of {expected_pages}.")
     else:
         if book_csv.exists() and book_csv.stat().st_size > 0:
-            print(f"\nResuming {pdf.name} from the first page because no valid checkpoint row was found.")
+            print(
+                f"\nResuming {pdf.name} from the first page because no valid checkpoint row was found."
+            )
         else:
             print(f"\nProcessing: {pdf.name}")
 
@@ -1105,7 +1217,7 @@ for pdf in pdf_files:
                 encoding="utf-8",
                 quoting=csv.QUOTE_MINIMAL,
                 quotechar='"',
-                escapechar='\\',
+                escapechar="\\",
             )
             wrote_header = True
 
@@ -1124,7 +1236,7 @@ for pdf in pdf_files:
             encoding="utf-8",
             quoting=csv.QUOTE_MINIMAL,
             quotechar='"',
-            escapechar='\\',
+            escapechar="\\",
         )
 
         del df
@@ -1139,4 +1251,3 @@ for pdf in pdf_files:
 
 print(f"\nSummary: skipped {already_done}/{all_books} books with complete CSV outputs.")
 gc.collect()
-
