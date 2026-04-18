@@ -5,3 +5,4 @@ updates
 unsloth_compiled_cache
 *.log
 notebooks/preprocessing/vectordb/
+datasets/

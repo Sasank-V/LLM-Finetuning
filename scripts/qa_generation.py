@@ -1,19 +1,13 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[1]:
-
-
+# %%
 # !pip install pymupdf pandas tqdm openai python-dotenv rapidfuzz
 
-
-# In[2]:
-
-
+# %%
 import json
 import os
 import re
+import threading
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -66,31 +60,13 @@ VALIDATION_MAX_RETRIES = 2
 DEDUP_THRESHOLD = 90
 SEED = 42
 
-DEBUG = os.getenv("DEBUG", "0").strip().lower() in {"1", "true", "yes", "on"}
+print(f"Workspace root: {WORKSPACE_ROOT}")
+print(f"CSV pages dir: {CSV_PAGES_DIR}")
+print(f"Output dir: {OUTPUT_DIR}")
+print(f"QWEN model: {QWEN_MODEL} | URL set: {bool(QWEN_BASE_URL)}")
+print(f"OPENAI model: {OPENAI_MODEL} | URL set: {bool(OPENAI_BASE_URL)}")
 
-
-def debug_print(*args: Any, **kwargs: Any) -> None:
-    if DEBUG:
-        print(*args, **kwargs)
-
-
-def debug_pprint(*args: Any, **kwargs: Any) -> None:
-    if DEBUG:
-        from pprint import pprint as _pprint
-
-        _pprint(*args, **kwargs)
-
-
-debug_print(f"Workspace root: {WORKSPACE_ROOT}")
-debug_print(f"CSV pages dir: {CSV_PAGES_DIR}")
-debug_print(f"Output dir: {OUTPUT_DIR}")
-debug_print(f"QWEN model: {QWEN_MODEL} | URL set: {bool(QWEN_BASE_URL)}")
-debug_print(f"OPENAI model: {OPENAI_MODEL} | URL set: {bool(OPENAI_BASE_URL)}")
-
-
-# In[3]:
-
-
+# %%
 NOISE_PATTERNS = [
     r"^\s*\d+\s*$",
     r"^\s*page\s+\d+\s*$",
@@ -234,9 +210,7 @@ def build_context_from_pages(
     return "\n\n".join(parts).strip(), metadata_rows
 
 
-# In[4]:
-
-
+# %%
 def build_qwen_client() -> OpenAI:
     if not QWEN_BASE_URL:
         raise ValueError(
@@ -350,8 +324,8 @@ ALL_QUESTION_COMBINATIONS: List[Tuple[str, str, str]] = [
 ]
 DEFAULT_QUESTIONS_PER_VALID_WINDOW = len(ALL_QUESTION_COMBINATIONS)
 
-# In-memory trace for all LLM calls in a run.
-LLM_TRACE_LOGS: List[Dict[str, Any]] = []
+# Per-thread trace buffers keep parallel book runs isolated.
+_TRACE_LOCAL = threading.local()
 QWEN_RAW_RESPONSE_LOG = os.getenv("QWEN_RAW_RESPONSE_LOG", "1").strip().lower() in {
     "1",
     "true",
@@ -360,15 +334,31 @@ QWEN_RAW_RESPONSE_LOG = os.getenv("QWEN_RAW_RESPONSE_LOG", "1").strip().lower() 
 }
 
 
+def _get_llm_trace_logs() -> List[Dict[str, Any]]:
+    logs = getattr(_TRACE_LOCAL, "logs", None)
+    if logs is None:
+        logs = []
+        _TRACE_LOCAL.logs = logs
+    return logs
+
+
+def reset_llm_trace_logs() -> None:
+    _TRACE_LOCAL.logs = []
+
+
+def get_llm_trace_logs() -> List[Dict[str, Any]]:
+    return _get_llm_trace_logs()
+
+
 def _preview(text: str, n: int = 180) -> str:
     text = (text or "").replace("\n", " ").strip()
     return text[:n] + ("..." if len(text) > n else "")
 
 
 def _append_llm_trace(entry: Dict[str, Any]) -> None:
-    LLM_TRACE_LOGS.append(entry)
+    _get_llm_trace_logs().append(entry)
     payload_txt = " | ".join(f"{k}={v}" for k, v in entry.items())
-    debug_print(f"[llm::summary] {payload_txt}")
+    print(f"[llm::summary] {payload_txt}")
 
 
 def _log_qwen_raw_response(
@@ -380,26 +370,21 @@ def _log_qwen_raw_response(
     raw: str,
     reasoning: str,
 ) -> None:
-    # Keep raw payload dumps only for smoke diagnostics.
-    if not DEBUG:
-        return
     if not QWEN_RAW_RESPONSE_LOG:
         return
-    if not str(response_type).lower().startswith("smoke"):
-        return
-    debug_print("[qwen::raw] ----- begin -----")
-    debug_print(
+    print("[qwen::raw] ----- begin -----")
+    print(
         f"[qwen::raw] type={response_type} window={window_tag or 'na'} attempt={attempt} variant={variant_idx} finish_reason={finish_reason}"
     )
-    debug_print(
+    print(
         f"[qwen::raw] content_chars={len(raw or '')} reasoning_chars={len(reasoning or '')}"
     )
-    debug_print("[qwen::raw] content:")
-    debug_print(raw if raw else "<EMPTY>")
+    print("[qwen::raw] content:")
+    print(raw if raw else "<EMPTY>")
     if reasoning:
-        debug_print("[qwen::raw] reasoning_content:")
-        debug_print(reasoning)
-    debug_print("[qwen::raw] ----- end -----")
+        print("[qwen::raw] reasoning_content:")
+        print(reasoning)
+    print("[qwen::raw] ----- end -----")
 
 
 def _strip_qwen_think_blocks(text: str) -> str:
@@ -1092,18 +1077,18 @@ def generate_window_questions(
     )
 
     if missing_total:
-        debug_print(
+        print(
             f"[window] {window_tag} missing_combinations={len(missing_total)} details={missing_total}"
         )
 
     return all_rows
 
 
-# In[5]:
-
-
+# %%
 # Deep smoke matrix (v2): parse orphan </think> consistently with main pipeline.
 # This cell is the canonical smoke check for current parser behavior.
+
+from pprint import pprint
 
 
 def _msg_to_text_v2(msg: Any) -> str:
@@ -1196,9 +1181,9 @@ for cfg in cases:
         }
         results.append(row)
 
-        debug_print("\n===", cfg["name"], "===")
-        debug_print("finish_reason:", row["finish_reason"])
-        debug_print(
+        print("\n===", cfg["name"], "===")
+        print("finish_reason:", row["finish_reason"])
+        print(
             "content_len:",
             row["content_len"],
             "| reasoning_len:",
@@ -1208,35 +1193,30 @@ for cfg in cases:
             "| thinking_len:",
             row["thinking_len"],
         )
-        debug_print("content_preview:", repr(row["content_preview"]))
-        debug_print("reasoning_preview:", repr(row["reasoning_preview"]))
-        debug_print(
-            "provider_reasoning_preview:", repr(row["provider_reasoning_preview"])
-        )
-        debug_print("thinking_preview:", repr(row["thinking_preview"]))
-        debug_print("thinking_block:")
-        debug_print(thinking_text if thinking_text else "<EMPTY>")
+        print("content_preview:", repr(row["content_preview"]))
+        print("reasoning_preview:", repr(row["reasoning_preview"]))
+        print("provider_reasoning_preview:", repr(row["provider_reasoning_preview"]))
+        print("thinking_preview:", repr(row["thinking_preview"]))
+        print("thinking_block:")
+        print(thinking_text if thinking_text else "<EMPTY>")
 
         if row["content_len"] == 0:
-            debug_print("raw_message_dump:")
+            print("raw_message_dump:")
             if hasattr(msg, "model_dump"):
-                debug_pprint(msg.model_dump())
+                pprint(msg.model_dump())
             else:
-                debug_pprint(str(msg))
+                pprint(str(msg))
 
     except Exception as exc:
         results.append({"case": cfg["name"], "error": str(exc)})
-        debug_print("\n===", cfg["name"], "===")
-        debug_print("error:", exc)
+        print("\n===", cfg["name"], "===")
+        print("error:", exc)
 
-debug_print("\nSummary:")
+print("\nSummary:")
 for r in results:
-    debug_print(r)
+    print(r)
 
-
-# In[6]:
-
-
+# %%
 from rapidfuzz import fuzz
 
 
@@ -1606,6 +1586,387 @@ def load_stream_checkpoint_index(
     return index
 
 
+def save_outputs(rows: List[Dict[str, Any]], stem: str) -> Dict[str, Path]:
+    jsonl_path = OUTPUT_DIR / f"{stem}.jsonl"
+    structured_rows = [_enrich_row_for_jsonl(r) for r in rows]
+
+    with jsonl_path.open("w", encoding="utf-8") as f:
+        for r in structured_rows:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+    trace_logs = get_llm_trace_logs()
+    if trace_logs:
+        trace_jsonl_path = OUTPUT_DIR / f"{stem}_llm_trace.jsonl"
+        with trace_jsonl_path.open("w", encoding="utf-8") as f:
+            for e in trace_logs:
+                f.write(json.dumps(e, ensure_ascii=False) + "\n")
+        print(f"[trace] wrote_llm_trace={trace_jsonl_path} rows={len(trace_logs)}")
+
+    return {"jsonl": jsonl_path}
+
+
+# %%
+# Override: per-combination parallel generation (one request per question-combo).
+PARALLEL_COMBO_REQUESTS = max(
+    1, int(os.getenv("QWEN_PARALLEL_COMBO_REQUESTS", "8") or 8)
+)
+
+
+def _normalize_generated_item(
+    item: Dict[str, Any],
+    expected_combo: Tuple[str, str, str],
+    batch_tag: str,
+    batch_attempt: int,
+) -> Optional[Dict[str, Any]]:
+    if not isinstance(item, dict):
+        return None
+
+    q = normalize_text(str(item.get("question", "")))
+    a = normalize_text(str(item.get("answer", "")))
+    r = normalize_text(str(item.get("reasoning", "")))
+    if not q or not a:
+        return None
+
+    difficulty = normalize_blooms_level(str(item.get("difficulty", "Understand")))
+    sub_format = str(item.get("sub_format", "Conceptual"))
+    if sub_format not in SUBFORMAT_TO_MAIN_FORMAT:
+        sub_format = "Conceptual"
+
+    if not _is_valid_item_for_format(sub_format, q, a, item):
+        _append_llm_trace(
+            {
+                "type": "generation",
+                "window": batch_tag,
+                "model": QWEN_MODEL,
+                "status": "invalid_format_item",
+                "batch_attempt": batch_attempt,
+                "sub_format": sub_format,
+                "question_preview": _preview(q),
+            }
+        )
+        return None
+
+    mapped_main_format = SUBFORMAT_TO_MAIN_FORMAT[sub_format]
+    combo_key = _combo_key(difficulty, mapped_main_format, sub_format)
+    expected_key = _combo_key(expected_combo[0], expected_combo[1], expected_combo[2])
+    if combo_key != expected_key:
+        return None
+
+    return {
+        "combo_id": str(item.get("combo_id", "")) or "",
+        "combo_key": combo_key,
+        "question": q,
+        "answer": a,
+        "reasoning": r,
+        "difficulty": difficulty,
+        "main_topic": str(item.get("main_topic", "DSA")) or "DSA",
+        "sub_topic": str(item.get("sub_topic", "General")) or "General",
+        "main_format": mapped_main_format,
+        "sub_format": sub_format,
+        "option_a": normalize_text(str(item.get("option_a", ""))),
+        "option_b": normalize_text(str(item.get("option_b", ""))),
+        "option_c": normalize_text(str(item.get("option_c", ""))),
+        "option_d": normalize_text(str(item.get("option_d", ""))),
+        "correct_option": normalize_text(str(item.get("correct_option", ""))).upper(),
+    }
+
+
+def _request_single_combo(
+    generation_client: OpenAI,
+    context_text: str,
+    combo: Tuple[str, str, str],
+    window_tag: str,
+    generation_retries: int,
+) -> Optional[Dict[str, Any]]:
+    system_prompt = (
+        "You are an expert computer science educator creating rigorous study QA data. "
+        "Use internal reasoning, but return only strict JSON in the final content."
+    )
+    combo_key = _combo_key(combo[0], combo[1], combo[2])
+
+    # Keep prompt payload compact to reduce truncation risk.
+    trimmed_context = (context_text or "")[:7000]
+    user_prompt = build_dynamic_prompt(
+        context_text=trimmed_context, combination_plan=[combo]
+    )
+
+    retries = max(1, int(generation_retries))
+    for attempt in range(1, retries + 1):
+        batch_tag = f"{window_tag}::{combo_key}::retry{attempt}"
+        try:
+            data = chat_json(
+                client=generation_client,
+                model=QWEN_MODEL,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=0.1,
+                response_type="generation",
+                window_tag=batch_tag,
+                max_retries=1,
+            )
+        except Exception as exc:
+            _append_llm_trace(
+                {
+                    "type": "generation",
+                    "window": batch_tag,
+                    "model": QWEN_MODEL,
+                    "status": "request_or_parse_error",
+                    "batch_attempt": attempt,
+                    "error": str(exc),
+                }
+            )
+            continue
+
+        items = data.get("items", [])
+        if not isinstance(items, list):
+            _append_llm_trace(
+                {
+                    "type": "generation",
+                    "window": batch_tag,
+                    "model": QWEN_MODEL,
+                    "status": "invalid_items_payload",
+                    "batch_attempt": attempt,
+                }
+            )
+            continue
+
+        for item in items:
+            normalized = _normalize_generated_item(
+                item, combo, batch_tag=batch_tag, batch_attempt=attempt
+            )
+            if normalized:
+                return normalized
+
+        _append_llm_trace(
+            {
+                "type": "generation",
+                "window": batch_tag,
+                "model": QWEN_MODEL,
+                "status": "combo_not_found_in_response",
+                "batch_attempt": attempt,
+                "expected_combo": combo_key,
+            }
+        )
+
+    _append_llm_trace(
+        {
+            "type": "generation",
+            "window": window_tag or "na",
+            "model": QWEN_MODEL,
+            "status": "combo_failed_after_retries",
+            "expected_combo": combo_key,
+            "retries": retries,
+        }
+    )
+    return None
+
+
+def generate_window_questions(
+    generation_client: OpenAI,
+    context_text: str,
+    question_count: int,
+    window_tag: str = "",
+    combination_plan: Optional[List[Tuple[str, str, str]]] = None,
+    generation_retries: int = GENERATION_MAX_RETRIES,
+) -> List[Dict[str, Any]]:
+    full_plan = combination_plan or get_question_combinations(question_count)
+    if not full_plan:
+        return []
+
+    max_workers = min(len(full_plan), PARALLEL_COMBO_REQUESTS)
+    print(
+        f"[window] {window_tag} parallel_combo_requests={max_workers} planned_questions={len(full_plan)}"
+    )
+
+    selected_by_combo: Dict[str, Dict[str, Any]] = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_combo = {
+            executor.submit(
+                _request_single_combo,
+                generation_client,
+                context_text,
+                combo,
+                window_tag,
+                generation_retries,
+            ): combo
+            for combo in full_plan
+        }
+
+        for future in as_completed(future_to_combo):
+            combo = future_to_combo[future]
+            key = _combo_key(combo[0], combo[1], combo[2])
+            try:
+                row = future.result()
+            except Exception as exc:
+                _append_llm_trace(
+                    {
+                        "type": "generation",
+                        "window": window_tag or "na",
+                        "model": QWEN_MODEL,
+                        "status": "parallel_future_error",
+                        "expected_combo": key,
+                        "error": str(exc),
+                    }
+                )
+                continue
+
+            if row:
+                selected_by_combo[key] = row
+
+    all_rows: List[Dict[str, Any]] = []
+    missing_total: List[str] = []
+    for diff, main_fmt, sub_fmt in full_plan:
+        key = _combo_key(diff, main_fmt, sub_fmt)
+        row = selected_by_combo.get(key)
+        if row:
+            out = dict(row)
+            out.pop("combo_key", None)
+            all_rows.append(out)
+        else:
+            missing_total.append(key)
+
+    _append_llm_trace(
+        {
+            "type": "generation",
+            "window": window_tag or "na",
+            "model": QWEN_MODEL,
+            "status": "parallel_combo_normalized",
+            "requested": len(full_plan),
+            "normalized_items": len(all_rows),
+            "missing_combos": len(missing_total),
+            "parallel_workers": max_workers,
+        }
+    )
+
+    if missing_total:
+        print(
+            f"[window] {window_tag} missing_combinations={len(missing_total)} details={missing_total}"
+        )
+
+    return all_rows
+
+
+# %%
+@dataclass
+class RunConfig:
+    questions_per_window: int = QUESTIONS_PER_WINDOW
+    window_size: int = WINDOW_SIZE
+    stride: int = WINDOW_STRIDE
+    dedup_threshold: int = DEDUP_THRESHOLD
+    min_context_chars: int = MIN_CONTEXT_CHARS
+    generation_retries: int = GENERATION_MAX_RETRIES
+    validation_retries: int = VALIDATION_MAX_RETRIES
+
+
+RUN_CFG = RunConfig(
+    questions_per_window=min(30, len(ALL_QUESTION_COMBINATIONS)),
+    window_size=5,
+    stride=2,
+    dedup_threshold=90,
+    min_context_chars=450,
+    generation_retries=3,
+    validation_retries=2,
+)
+
+print("Run configuration:")
+print(RUN_CFG)
+
+# %%
+import builtins
+from typing import Optional
+
+# Global debug flag: when False, suppress CLI prints while still writing llm_trace JSONL.
+DEBUG_CLI = os.getenv("QA_DEBUG_CLI", "0").strip().lower() in {"1", "true", "yes", "on"}
+_RAW_PRINT = builtins.print
+
+
+def debug_print(*args, **kwargs):
+    if DEBUG_CLI:
+        _RAW_PRINT(*args, **kwargs)
+
+
+# Route notebook-level print calls through debug flag.
+print = debug_print
+
+
+def _read_last_valid_jsonl_row(jsonl_path: Optional[Path]) -> Optional[Dict[str, Any]]:
+    if not jsonl_path or not jsonl_path.exists():
+        return None
+
+    # Read from file end to quickly find the last valid JSON row.
+    with jsonl_path.open("rb") as f:
+        f.seek(0, os.SEEK_END)
+        file_size = f.tell()
+        if file_size <= 0:
+            return None
+
+        chunk_size = 8192
+        pos = file_size
+        carry = b""
+
+        while pos > 0:
+            take = min(chunk_size, pos)
+            pos -= take
+            f.seek(pos)
+            block = f.read(take)
+            buf = block + carry
+            lines = buf.splitlines()
+
+            if pos > 0:
+                carry = lines[0] if lines else b""
+                lines = lines[1:] if len(lines) > 1 else []
+            else:
+                carry = b""
+
+            for raw in reversed(lines):
+                text = raw.decode("utf-8", errors="ignore").strip()
+                if not text:
+                    continue
+                try:
+                    obj = json.loads(text)
+                except Exception:
+                    continue
+                if isinstance(obj, dict):
+                    return obj
+
+    return None
+
+
+def load_last_stream_progress(
+    stream_jsonl_path: Optional[Path], input_csv_file: str
+) -> Dict[str, Any]:
+    row = _read_last_valid_jsonl_row(stream_jsonl_path)
+    if not row:
+        return {}
+
+    row_csv = str(row.get("input_csv_file", "")).strip()
+    if row_csv and row_csv != input_csv_file:
+        return {}
+
+    p_start = _to_int(row.get("page_start"), 0)
+    p_end = _to_int(row.get("page_end"), 0)
+    b_no = _to_int(row.get("batch_number"), 1)
+    w_idx = _to_int(row.get("window_index"), 0)
+    q_no = _to_int(row.get("question_number"), 0)
+
+    if p_start <= 0 or p_end <= 0:
+        page_range = str(row.get("page_number_range", "")).strip()
+        m = re.match(r"\s*(\d+)\s*[-:]\s*(\d+)\s*$", page_range)
+        if m:
+            p_start, p_end = int(m.group(1)), int(m.group(2))
+
+    if p_start <= 0 or p_end <= 0:
+        return {}
+
+    return {
+        "page_start": p_start,
+        "page_end": p_end,
+        "batch_number": max(1, b_no),
+        "window_index": w_idx,
+        "question_number": q_no,
+    }
+
+
 def generate_for_book(
     generation_client: OpenAI,
     validation_client: OpenAI,
@@ -1624,7 +1985,7 @@ def generate_for_book(
 ) -> List[Dict[str, Any]]:
     book_pages_df = load_book_pages_from_csv(csv_path)
     if book_pages_df.empty:
-        debug_print(f"[book] skip={csv_path.name} reason=empty_csv_content")
+        print(f"[book] skip={csv_path.name} reason=empty_csv_content")
         return []
 
     book_name = str(book_pages_df["book_name"].iloc[0]) or csv_path.stem.replace(
@@ -1643,29 +2004,57 @@ def generate_for_book(
     )
     flush_every_windows = max(1, int(flush_every_windows))
     checkpoint_index = load_stream_checkpoint_index(stream_jsonl_path, csv_path.name)
+
+    # Resume anchor from the LAST row in stream JSONL for this CSV.
+    last_progress = (
+        load_last_stream_progress(stream_jsonl_path, csv_path.name)
+        if stream_jsonl_path
+        else {}
+    )
+    resume_key = ""
+    resume_reached = False
+    effective_batch_number = int(batch_number)
+
+    if last_progress:
+        resume_key = _window_key(last_progress["page_start"], last_progress["page_end"])
+        effective_batch_number = max(
+            effective_batch_number,
+            int(last_progress.get("batch_number", effective_batch_number)),
+        )
+        print(
+            f"[resume] book={book_name} from_last_row page_range={last_progress['page_start']}-{last_progress['page_end']} "
+            f"batch={effective_batch_number}"
+        )
+
     resumed_complete = 0
     resumed_partial = 0
 
-    debug_print(
+    print(
         f"[book] start={book_name} csv={csv_path.name} total_pages={total_pages} windows={len(windows)}"
     )
 
     for w_idx, (p_start, p_end) in enumerate(
         tqdm(windows, desc=f"Windows::{book_name}"), start=1
     ):
+        wk = _window_key(p_start, p_end)
+
+        # Skip everything before the last persisted window.
+        if resume_key and not resume_reached:
+            if wk != resume_key:
+                continue
+            resume_reached = True
+
         window_tag = f"{book_name}:{p_start}-{p_end}"
         context_text, page_meta = build_context_from_pages(
             book_pages_df, page_start=p_start, page_end=p_end
         )
         if not context_text or len(context_text) < max(200, int(min_context_chars)):
-            debug_print(
+            print(
                 f"[window] {window_tag} context_valid=False reason=insufficient_context chars={len(context_text or '')}"
             )
             continue
 
-        debug_print(
-            f"[window] {window_tag} context_valid=True chars={len(context_text)}"
-        )
+        print(f"[window] {window_tag} context_valid=True chars={len(context_text)}")
         window_pages = max(1, p_end - p_start + 1)
         max_questions_per_page = max(
             1,
@@ -1673,7 +2062,6 @@ def generate_for_book(
             // max(1, window_size),
         )
         full_plan = list(get_question_combinations(target_questions_per_window))
-        wk = _window_key(p_start, p_end)
         existing_combo_keys = (
             checkpoint_index.get(wk, set()) if stream_jsonl_path else set()
         )
@@ -1685,7 +2073,7 @@ def generate_for_book(
 
         if stream_jsonl_path and not pending_plan:
             resumed_complete += 1
-            debug_print(
+            print(
                 f"[resume] skip_complete window={window_tag} combos={len(existing_combo_keys)}"
             )
             continue
@@ -1697,7 +2085,7 @@ def generate_for_book(
                 "reason": "resume_partial_window",
                 "recommended_questions": len(full_plan),
             }
-            debug_print(
+            print(
                 f"[resume] partial window={window_tag} existing={len(existing_combo_keys)} pending={len(pending_plan)}"
             )
         else:
@@ -1710,7 +2098,7 @@ def generate_for_book(
                 validation_retries=validation_retries,
             )
             if not gate["eligible"]:
-                debug_print(
+                print(
                     f"[window] {window_tag} eligible=False reason={gate.get('reason', 'unknown')}"
                 )
                 continue
@@ -1728,7 +2116,7 @@ def generate_for_book(
             }
         )
 
-        debug_print(
+        print(
             f"[window] {window_tag} eligible=True "
             f"recommended={gate.get('recommended_questions', 'na')} "
             f"requested_questions={q_count} "
@@ -1745,12 +2133,12 @@ def generate_for_book(
                 generation_retries=generation_retries,
             )
         except Exception as exc:
-            debug_print(
+            print(
                 f"[warn] generation failed for {book_name} pages {p_start}-{p_end}: {exc}"
             )
             continue
 
-        debug_print(f"[window] {window_tag} generated_items={len(items)}")
+        print(f"[window] {window_tag} generated_items={len(items)}")
 
         for i, item in enumerate(items, start=1):
             existing_count = len(existing_combo_keys)
@@ -1764,7 +2152,7 @@ def generate_for_book(
                 "window_size": window_size,
                 "window_stride": stride,
                 "question_number": existing_count + i,
-                "batch_number": batch_number,
+                "batch_number": effective_batch_number,
                 "context_char_len": len(context_text),
                 "eligibility_reason": gate.get("reason", "unknown"),
                 "recommended_questions": int(
@@ -1790,87 +2178,38 @@ def generate_for_book(
         ):
             wrote = append_jsonl_rows(stream_jsonl_path, batch_buffer)
             if wrote:
-                debug_print(f"[stream] wrote_rows={wrote} path={stream_jsonl_path}")
+                print(f"[stream] wrote_rows={wrote} path={stream_jsonl_path}")
             batch_buffer = []
 
         if stream_trace_path:
             trace_offset = append_llm_trace(
-                stream_trace_path, LLM_TRACE_LOGS, start_index=trace_offset
+                stream_trace_path, get_llm_trace_logs(), start_index=trace_offset
             )
 
     if batch_buffer and stream_jsonl_path:
         wrote = append_jsonl_rows(stream_jsonl_path, batch_buffer)
         if wrote:
-            debug_print(f"[stream] wrote_rows={wrote} path={stream_jsonl_path}")
+            print(f"[stream] wrote_rows={wrote} path={stream_jsonl_path}")
 
     pre_dedup = len(rows)
     deduped = deduplicate_rows(rows, threshold=dedup_threshold)
     if stream_jsonl_path:
-        debug_print(
+        print(
             f"[resume] complete_windows_skipped={resumed_complete} partial_windows_resumed={resumed_partial}"
         )
-    debug_print(
+    print(
         f"[book] complete={book_name} pre_dedup={pre_dedup} post_dedup={len(deduped)} removed={pre_dedup - len(deduped)}"
     )
 
     return deduped
 
 
-def save_outputs(rows: List[Dict[str, Any]], stem: str) -> Dict[str, Path]:
-    jsonl_path = OUTPUT_DIR / f"{stem}.jsonl"
-    structured_rows = [_enrich_row_for_jsonl(r) for r in rows]
-
-    with jsonl_path.open("w", encoding="utf-8") as f:
-        for r in structured_rows:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
-
-    if LLM_TRACE_LOGS:
-        trace_jsonl_path = OUTPUT_DIR / f"{stem}_llm_trace.jsonl"
-        with trace_jsonl_path.open("w", encoding="utf-8") as f:
-            for e in LLM_TRACE_LOGS:
-                f.write(json.dumps(e, ensure_ascii=False) + "\n")
-        debug_print(
-            f"[trace] wrote_llm_trace={trace_jsonl_path} rows={len(LLM_TRACE_LOGS)}"
-        )
-
-    return {"jsonl": jsonl_path}
-
-
-# In[7]:
-
-
-@dataclass
-class RunConfig:
-    questions_per_window: int = QUESTIONS_PER_WINDOW
-    window_size: int = WINDOW_SIZE
-    stride: int = WINDOW_STRIDE
-    dedup_threshold: int = DEDUP_THRESHOLD
-    min_context_chars: int = MIN_CONTEXT_CHARS
-    generation_retries: int = GENERATION_MAX_RETRIES
-    validation_retries: int = VALIDATION_MAX_RETRIES
-
-
-RUN_CFG = RunConfig(
-    questions_per_window=min(30, len(ALL_QUESTION_COMBINATIONS)),
-    window_size=5,
-    stride=2,
-    dedup_threshold=90,
-    min_context_chars=450,
-    generation_retries=3,
-    validation_retries=2,
-)
-
-debug_print("Run configuration:")
-debug_print(RUN_CFG)
-
-
+# %% [markdown]
 # ## Section A: Single-CSV Generation
 #
 # Uses the shared API + eligibility + sliding-window pipeline to generate QA rows for one selected page-text CSV in the pdf_page_text_by_book folder.
 
-# In[8]:
-
-
+# %%
 # # Section A: Generate QA for one selected CSV in CSV_PAGES_DIR
 
 # generation_client = build_qwen_client()
@@ -1912,34 +2251,78 @@ debug_print(RUN_CFG)
 # for k, v in single_paths.items():
 #     print(f"- {k}: {v}")
 
-
+# %% [markdown]
 # ## Section B: All-CSV Dataset Build
 #
 # Reuses the exact same functions from Section A, iterates all page-text CSV files in the pdf_page_text_by_book folder, and exports one deduplicated combined dataset.
 
-# In[9]:
-
-
-# Section B: Generate QA per CSV book and save outputs per book (batched window flush + aggressive cleanup)
+# %%
+# Section B: Generate QA for selected book groups (parallel workers + per-book isolated traces)
 
 import gc
 
-generation_client = build_qwen_client()
-validation_client = build_openai_validation_client()
-csv_candidates = sorted(CSV_PAGES_DIR.glob("*_pages_cleaned.csv"))
-if not csv_candidates:
-    raise FileNotFoundError(f"No *_pages_cleaned.csv files found in {CSV_PAGES_DIR}")
+# Set selected groups here. Example: ["DSA"], ["CN", "OS"], or [] for all books.
+BOOK_GROUPS: List[str] = ["DSA"]
 
-# Flush stream files every N windows to reduce IO overhead while keeping resumability.
+
+def _normalize_group_token(text: str) -> str:
+    t = normalize_text(str(text or "")).lower()
+    return re.sub(r"[^a-z0-9]+", "", t)
+
+
+def _book_group_prefix_from_stem(csv_stem: str) -> str:
+    # Example stems: "DSA - 1_pages_cleaned", "CN - 2_pages_cleaned" -> "dsa", "cn"
+    book_label = csv_stem.replace("_pages_cleaned", "")
+    m = re.match(r"\s*([A-Za-z]+)", book_label)
+    if m:
+        return _normalize_group_token(m.group(1))
+    return _normalize_group_token(book_label)
+
+
+def filter_csv_candidates_by_groups(
+    csv_files: List[Path], groups: List[str]
+) -> List[Path]:
+    if not groups:
+        return csv_files
+
+    wanted = {_normalize_group_token(g) for g in groups if str(g).strip()}
+    if not wanted:
+        return csv_files
+
+    out: List[Path] = []
+    for p in csv_files:
+        prefix = _book_group_prefix_from_stem(p.stem)
+        if prefix in wanted:
+            out.append(p)
+    return out
+
+
+all_csv_candidates = sorted(CSV_PAGES_DIR.glob("*_pages_cleaned.csv"))
+csv_candidates = filter_csv_candidates_by_groups(all_csv_candidates, BOOK_GROUPS)
+
+if not csv_candidates:
+    raise FileNotFoundError(
+        f"No matching *_pages_cleaned.csv files found for groups={BOOK_GROUPS} in {CSV_PAGES_DIR}"
+    )
+
+# Configure based on provider limits and machine capacity.
+MAX_PARALLEL_BOOKS = min(13, len(csv_candidates))
 BATCH_FLUSH_WINDOWS = 5
 
 book_run_summaries: List[Dict[str, Any]] = []
 
-for batch_idx, csv_path in enumerate(csv_candidates, start=1):
-    debug_print(f"\nProcessing {batch_idx}/{len(csv_candidates)}: {csv_path.name}")
+print(
+    f"Selected groups: {BOOK_GROUPS if BOOK_GROUPS else 'ALL'} | "
+    f"books_selected={len(csv_candidates)} / total_books={len(all_csv_candidates)}"
+)
 
-    # Keep traces scoped to current book output files.
-    LLM_TRACE_LOGS.clear()
+
+def process_single_book(task: Tuple[int, Path]) -> Dict[str, Any]:
+    batch_idx, csv_path = task
+    reset_llm_trace_logs()
+
+    generation_client = build_qwen_client()
+    validation_client = build_openai_validation_client()
 
     stream_jsonl = OUTPUT_DIR / f"qa_{csv_path.stem}_stream.jsonl"
     stream_trace = OUTPUT_DIR / f"qa_{csv_path.stem}_stream_llm_trace.jsonl"
@@ -1961,40 +2344,82 @@ for batch_idx, csv_path in enumerate(csv_candidates, start=1):
         flush_every_windows=BATCH_FLUSH_WINDOWS,
     )
 
-    # Final per-book deduped export.
     output_stem = f"qa_{csv_path.stem}_sliding_window"
     book_paths = save_outputs(book_rows, stem=output_stem)
 
-    debug_print(f"  kept rows after dedup: {len(book_rows)}")
-    debug_print(f"  stream_jsonl: {stream_jsonl}")
-    debug_print(f"  stream_trace: {stream_trace}")
-    for k, v in book_paths.items():
-        debug_print(f"  {k}: {v}")
+    summary = {
+        "status": "ok",
+        "input_csv_file": csv_path.name,
+        "rows_after_dedup": len(book_rows),
+        "stream_jsonl": str(stream_jsonl),
+        "stream_trace": str(stream_trace),
+        "output_jsonl": str(book_paths.get("jsonl", "")),
+        "error": "",
+    }
 
-    book_run_summaries.append(
-        {
-            "input_csv_file": csv_path.name,
-            "rows_after_dedup": len(book_rows),
-            "stream_jsonl": str(stream_jsonl),
-            "stream_trace": str(stream_trace),
-            "output_jsonl": str(book_paths.get("jsonl", "")),
-        }
-    )
-
-    # Aggressive cleanup between books.
     del book_rows
     del book_paths
     gc.collect()
 
-debug_print("\nPer-book generation complete.")
+    return summary
+
+
+print(
+    f"Running {len(csv_candidates)} selected books with up to {MAX_PARALLEL_BOOKS} parallel workers"
+)
+tasks: List[Tuple[int, Path]] = list(enumerate(csv_candidates, start=1))
+
+with ThreadPoolExecutor(max_workers=MAX_PARALLEL_BOOKS) as executor:
+    future_to_task = {
+        executor.submit(process_single_book, task): task for task in tasks
+    }
+    for future in tqdm(
+        as_completed(future_to_task), total=len(future_to_task), desc="Books"
+    ):
+        batch_idx, csv_path = future_to_task[future]
+        try:
+            summary = future.result()
+            book_run_summaries.append(summary)
+            print(
+                f"\nCompleted {batch_idx}/{len(csv_candidates)}: {csv_path.name} "
+                f"| rows_after_dedup={summary['rows_after_dedup']}"
+            )
+        except Exception as exc:
+            print(
+                f"\nFailed {batch_idx}/{len(csv_candidates)}: {csv_path.name} | error={exc}"
+            )
+            book_run_summaries.append(
+                {
+                    "status": "failed",
+                    "input_csv_file": csv_path.name,
+                    "rows_after_dedup": 0,
+                    "stream_jsonl": str(
+                        OUTPUT_DIR / f"qa_{csv_path.stem}_stream.jsonl"
+                    ),
+                    "stream_trace": str(
+                        OUTPUT_DIR / f"qa_{csv_path.stem}_stream_llm_trace.jsonl"
+                    ),
+                    "output_jsonl": "",
+                    "error": str(exc),
+                }
+            )
+
+print("\nPer-book generation complete.")
 
 if book_run_summaries:
     summary_df = pd.DataFrame(book_run_summaries)
+    summary_df = summary_df.sort_values(["status", "input_csv_file"]).reset_index(
+        drop=True
+    )
     summary_csv = OUTPUT_DIR / "qa_per_book_generation_summary.csv"
     summary_df.to_csv(summary_csv, index=False)
 
-    debug_print("\nRun summary:")
-    debug_print(
-        summary_df[["input_csv_file", "rows_after_dedup"]].to_string(index=False)
+    print("\nRun summary:")
+    print(
+        summary_df[["status", "input_csv_file", "rows_after_dedup"]].to_string(
+            index=False
+        )
     )
-    debug_print(f"\nSummary CSV: {summary_csv}")
+    failed_count = int((summary_df["status"] == "failed").sum())
+    print(f"\nFailed books: {failed_count}")
+    print(f"Summary CSV: {summary_csv}")
